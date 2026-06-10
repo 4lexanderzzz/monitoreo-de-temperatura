@@ -1,0 +1,662 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<meta http-equiv="content-type" content="text/html; charset=utf-8"/>
+	<title></title>
+	<meta name="generator" content="LibreOffice 26.2.3.2 (Linux)"/>
+	<meta name="created" content="00:00:00"/>
+	<meta name="changed" content="00:00:00"/>
+	<style type="text/css">
+		@page { size: 8.27in 11.69in; margin: 0.79in }
+		p { margin-bottom: 0.1in; line-height: 115%; background: transparent }
+		pre { font-size: 10pt; font-family: "Liberation Mono", monospace; background: transparent }
+	</style>
+</head>
+<body lang="en-US" link="#000080" vlink="#800000" dir="ltr"><pre>&lt;!DOCTYPE html&gt;
+&lt;html lang=&quot;es&quot;&gt;
+&lt;head&gt;
+  &lt;meta charset=&quot;UTF-8&quot; /&gt;
+  &lt;meta name=&quot;viewport&quot; content=&quot;width=device-width, initial-scale=1.0&quot; /&gt;
+  &lt;title&gt;Monitor de Temperatura — ESP32&lt;/title&gt;
+
+  &lt;!-- Firebase SDK (compat v9) --&gt;
+  &lt;script src=&quot;https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js&quot;&gt;&lt;/script&gt;
+  &lt;script src=&quot;https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js&quot;&gt;&lt;/script&gt;
+  &lt;!-- SheetJS para exportar Excel --&gt;
+  &lt;script src=&quot;https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js&quot;&gt;&lt;/script&gt;
+
+  &lt;style&gt;
+    /* ── TOKENS ── */
+    :root {
+      --bg:        #0d1117;
+      --surface:   #161b22;
+      --border:    #21262d;
+      --accent:    #f97316;       /* naranja térmico */
+      --accent2:   #38bdf8;       /* azul frío */
+      --green:     #22c55e;
+      --red:       #ef4444;
+      --text:      #e6edf3;
+      --muted:     #7d8590;
+      --font-mono: &quot;JetBrains Mono&quot;, &quot;Fira Mono&quot;, monospace;
+      --font-sans: &quot;Inter&quot;, &quot;Segoe UI&quot;, sans-serif;
+      --radius:    10px;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font-sans);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── HEADER ── */
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 18px 32px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .logo svg { width: 32px; height: 32px; }
+    .logo h1 { font-size: 1.1rem; font-weight: 700; letter-spacing: -0.02em; }
+    .logo span { color: var(--accent); }
+
+    .chip {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.75rem;
+      color: var(--muted);
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 4px 12px;
+    }
+    .chip .dot {
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      background: var(--muted);
+      transition: background 0.3s;
+    }
+    .chip .dot.online  { background: var(--green); box-shadow: 0 0 6px var(--green); }
+    .chip .dot.offline { background: var(--red); }
+
+    /* ── MAIN GRID ── */
+    main {
+      flex: 1;
+      padding: 32px;
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      grid-template-rows: auto auto 1fr;
+      gap: 20px;
+      max-width: 1300px;
+      margin: 0 auto;
+      width: 100%;
+    }
+
+    /* ── CARDS ── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px;
+    }
+    .card-label {
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: var(--muted);
+      margin-bottom: 8px;
+    }
+    .temp-value {
+      font-family: var(--font-mono);
+      font-size: 3.2rem;
+      font-weight: 700;
+      line-height: 1;
+      letter-spacing: -0.03em;
+    }
+    .temp-value.entrada { color: var(--accent2); }
+    .temp-value.salida  { color: var(--accent);  }
+    .temp-value.delta   { color: var(--green);   }
+    .temp-unit { font-size: 1.4rem; color: var(--muted); }
+
+    /* ── CONTROL CARD ── */
+    .control-card {
+      grid-column: span 3;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+    .control-info h2 { font-size: 1rem; font-weight: 600; }
+    .control-info p  { font-size: 0.82rem; color: var(--muted); margin-top: 4px; }
+
+    .btn-group { display: flex; gap: 10px; flex-wrap: wrap; }
+
+    button {
+      cursor: pointer;
+      border: none;
+      border-radius: var(--radius);
+      padding: 10px 22px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      letter-spacing: 0.01em;
+      transition: opacity 0.15s, transform 0.1s;
+    }
+    button:active { transform: scale(0.97); }
+    button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    .btn-start  { background: var(--green);  color: #0d1117; }
+    .btn-stop   { background: var(--red);    color: #fff; }
+    .btn-export { background: var(--surface); color: var(--text); border: 1px solid var(--border); }
+    .btn-export:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+
+    /* ── STATUS BADGE ── */
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.78rem;
+      font-weight: 600;
+      padding: 5px 12px;
+      border-radius: 20px;
+      background: rgba(34,197,94,0.12);
+      color: var(--green);
+      border: 1px solid rgba(34,197,94,0.3);
+    }
+    .status-badge.detenido {
+      background: rgba(239,68,68,0.1);
+      color: var(--red);
+      border-color: rgba(239,68,68,0.25);
+    }
+    .status-badge .blink {
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      background: currentColor;
+      animation: blink 1.2s ease-in-out infinite;
+    }
+    .status-badge.detenido .blink { animation: none; }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+    /* ── CHART AREA ── */
+    .chart-card {
+      grid-column: span 3;
+      min-height: 240px;
+    }
+    .chart-card h3 {
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--muted);
+      margin-bottom: 16px;
+    }
+    #chartCanvas {
+      width: 100%;
+      height: 200px;
+      display: block;
+    }
+    svg.chart-svg { width: 100%; height: 200px; overflow: visible; }
+    .chart-line { fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    .chart-area { opacity: 0.08; }
+
+    /* ── TABLE ── */
+    .table-card {
+      grid-column: span 3;
+      overflow: hidden;
+    }
+    .table-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+    }
+    .table-header h3 { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); }
+
+    .table-wrap { overflow-x: auto; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.83rem;
+      font-family: var(--font-mono);
+    }
+    thead tr { border-bottom: 1px solid var(--border); }
+    th {
+      text-align: left;
+      padding: 8px 12px;
+      color: var(--muted);
+      font-weight: 500;
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+    td { padding: 9px 12px; border-bottom: 1px solid rgba(33,38,45,0.6); }
+    tbody tr:hover { background: rgba(255,255,255,0.03); }
+    .td-entrada { color: var(--accent2); }
+    .td-salida  { color: var(--accent);  }
+    .td-delta   { color: var(--green);   }
+
+    /* ── EMPTY / ERROR ── */
+    .empty {
+      text-align: center;
+      padding: 40px;
+      color: var(--muted);
+      font-size: 0.85rem;
+    }
+
+    /* ── CONFIG PANEL ── */
+    .config-note {
+      background: rgba(249,115,22,0.08);
+      border: 1px solid rgba(249,115,22,0.25);
+      border-radius: var(--radius);
+      padding: 14px 18px;
+      font-size: 0.82rem;
+      color: var(--accent);
+      grid-column: span 3;
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+    }
+    .config-note code {
+      background: rgba(249,115,22,0.15);
+      border-radius: 4px;
+      padding: 1px 5px;
+      font-family: var(--font-mono);
+      font-size: 0.78rem;
+    }
+
+    /* ── RESPONSIVE ── */
+    @media (max-width: 768px) {
+      main { grid-template-columns: 1fr 1fr; padding: 16px; gap: 12px; }
+      .control-card, .chart-card, .table-card { grid-column: span 2; }
+      .temp-value { font-size: 2.4rem; }
+    }
+    @media (max-width: 480px) {
+      main { grid-template-columns: 1fr; }
+      .control-card, .chart-card, .table-card { grid-column: span 1; }
+    }
+  &lt;/style&gt;
+&lt;/head&gt;
+&lt;body&gt;
+
+&lt;!-- ══════════════════════════════════════════
+     ENCABEZADO
+═══════════════════════════════════════════ --&gt;
+&lt;header&gt;
+  &lt;div class=&quot;logo&quot;&gt;
+    &lt;svg viewBox=&quot;0 0 32 32&quot; fill=&quot;none&quot; xmlns=&quot;http://www.w3.org/2000/svg&quot;&gt;
+      &lt;rect width=&quot;32&quot; height=&quot;32&quot; rx=&quot;8&quot; fill=&quot;#161b22&quot;/&gt;
+      &lt;path d=&quot;M16 6v12&quot; stroke=&quot;#38bdf8&quot; stroke-width=&quot;2.2&quot; stroke-linecap=&quot;round&quot;/&gt;
+      &lt;circle cx=&quot;16&quot; cy=&quot;22&quot; r=&quot;4&quot; fill=&quot;#f97316&quot;/&gt;
+      &lt;path d=&quot;M11 10H9a1 1 0 000 2h2M11 14H9a1 1 0 000 2h2M11 18H9a1 1 0 000 2h2&quot; stroke=&quot;#7d8590&quot; stroke-width=&quot;1.5&quot; stroke-linecap=&quot;round&quot;/&gt;
+    &lt;/svg&gt;
+    &lt;h1&gt;Temp&lt;span&gt;Monitor&lt;/span&gt; &amp;mdash; ESP32&lt;/h1&gt;
+  &lt;/div&gt;
+  &lt;div style=&quot;display:flex;align-items:center;gap:12px;flex-wrap:wrap;&quot;&gt;
+    &lt;div class=&quot;chip&quot;&gt;
+      &lt;span class=&quot;dot&quot; id=&quot;wifiDot&quot;&gt;&lt;/span&gt;
+      &lt;span id=&quot;wifiLabel&quot;&gt;Conectando…&lt;/span&gt;
+    &lt;/div&gt;
+    &lt;div id=&quot;statusBadge&quot; class=&quot;status-badge detenido&quot;&gt;
+      &lt;span class=&quot;blink&quot;&gt;&lt;/span&gt;
+      &lt;span id=&quot;statusText&quot;&gt;Detenido&lt;/span&gt;
+    &lt;/div&gt;
+  &lt;/div&gt;
+&lt;/header&gt;
+
+&lt;!-- ══════════════════════════════════════════
+     CONTENIDO PRINCIPAL
+═══════════════════════════════════════════ --&gt;
+&lt;main&gt;
+
+  &lt;!-- Aviso de configuración --&gt;
+  &lt;div class=&quot;config-note&quot; id=&quot;configNote&quot;&gt;
+    ⚙️ &lt;div&gt;
+      Edita las constantes &lt;code&gt;firebaseConfig&lt;/code&gt; en el bloque
+      &lt;code&gt;&amp;lt;script&amp;gt;&lt;/code&gt; al final de este archivo para conectar con
+      tu proyecto Firebase. Luego sube la página a cualquier servidor estático.
+    &lt;/div&gt;
+  &lt;/div&gt;
+
+  &lt;!-- Tarjeta ENTRADA --&gt;
+  &lt;div class=&quot;card&quot;&gt;
+    &lt;div class=&quot;card-label&quot;&gt;🌡 Temperatura Entrada&lt;/div&gt;
+    &lt;div class=&quot;temp-value entrada&quot; id=&quot;valEntrada&quot;&gt;—&lt;span class=&quot;temp-unit&quot;&gt;°C&lt;/span&gt;&lt;/div&gt;
+    &lt;div style=&quot;font-size:0.75rem;color:var(--muted);margin-top:8px;&quot;&gt;Sensor DS18B20 #0&lt;/div&gt;
+  &lt;/div&gt;
+
+  &lt;!-- Tarjeta SALIDA --&gt;
+  &lt;div class=&quot;card&quot;&gt;
+    &lt;div class=&quot;card-label&quot;&gt;🌡 Temperatura Salida&lt;/div&gt;
+    &lt;div class=&quot;temp-value salida&quot; id=&quot;valSalida&quot;&gt;—&lt;span class=&quot;temp-unit&quot;&gt;°C&lt;/span&gt;&lt;/div&gt;
+    &lt;div style=&quot;font-size:0.75rem;color:var(--muted);margin-top:8px;&quot;&gt;Sensor DS18B20 #1&lt;/div&gt;
+  &lt;/div&gt;
+
+  &lt;!-- Tarjeta DELTA --&gt;
+  &lt;div class=&quot;card&quot;&gt;
+    &lt;div class=&quot;card-label&quot;&gt;Δ Diferencia (salida − entrada)&lt;/div&gt;
+    &lt;div class=&quot;temp-value delta&quot; id=&quot;valDelta&quot;&gt;—&lt;span class=&quot;temp-unit&quot;&gt;°C&lt;/span&gt;&lt;/div&gt;
+    &lt;div style=&quot;font-size:0.75rem;color:var(--muted);margin-top:8px;&quot;&gt;Última actualización: &lt;span id=&quot;lastTs&quot;&gt;—&lt;/span&gt;&lt;/div&gt;
+  &lt;/div&gt;
+
+  &lt;!-- Control --&gt;
+  &lt;div class=&quot;card control-card&quot;&gt;
+    &lt;div class=&quot;control-info&quot;&gt;
+      &lt;h2&gt;Control de medición&lt;/h2&gt;
+      &lt;p&gt;El cambio se aplica en el próximo ciclo del ESP32 (≈ 1 s).&lt;/p&gt;
+    &lt;/div&gt;
+    &lt;div class=&quot;btn-group&quot;&gt;
+      &lt;button class=&quot;btn-start&quot;  id=&quot;btnStart&quot;  onclick=&quot;setMidiendo(true)&quot;&gt;▶ Iniciar&lt;/button&gt;
+      &lt;button class=&quot;btn-stop&quot;   id=&quot;btnStop&quot;   onclick=&quot;setMidiendo(false)&quot; disabled&gt;■ Detener&lt;/button&gt;
+      &lt;button class=&quot;btn-export&quot; onclick=&quot;exportarExcel()&quot;&gt;⬇ Excel&lt;/button&gt;
+      &lt;button class=&quot;btn-export&quot; onclick=&quot;exportarTxt()&quot;&gt;⬇ TXT&lt;/button&gt;
+      &lt;button class=&quot;btn-export&quot; onclick=&quot;limpiarHistorial()&quot; style=&quot;color:var(--red)&quot;&gt;🗑 Limpiar&lt;/button&gt;
+    &lt;/div&gt;
+  &lt;/div&gt;
+
+  &lt;!-- Gráfica --&gt;
+  &lt;div class=&quot;card chart-card&quot;&gt;
+    &lt;h3&gt;Historial — últimas 30 lecturas&lt;/h3&gt;
+    &lt;svg class=&quot;chart-svg&quot; id=&quot;chartSvg&quot; viewBox=&quot;0 0 900 180&quot; preserveAspectRatio=&quot;none&quot;&gt;
+      &lt;defs&gt;
+        &lt;linearGradient id=&quot;gradEntrada&quot; x1=&quot;0&quot; y1=&quot;0&quot; x2=&quot;0&quot; y2=&quot;1&quot;&gt;
+          &lt;stop offset=&quot;0%&quot; stop-color=&quot;#38bdf8&quot; stop-opacity=&quot;0.6&quot;/&gt;
+          &lt;stop offset=&quot;100%&quot; stop-color=&quot;#38bdf8&quot; stop-opacity=&quot;0&quot;/&gt;
+        &lt;/linearGradient&gt;
+        &lt;linearGradient id=&quot;gradSalida&quot; x1=&quot;0&quot; y1=&quot;0&quot; x2=&quot;0&quot; y2=&quot;1&quot;&gt;
+          &lt;stop offset=&quot;0%&quot; stop-color=&quot;#f97316&quot; stop-opacity=&quot;0.6&quot;/&gt;
+          &lt;stop offset=&quot;100%&quot; stop-color=&quot;#f97316&quot; stop-opacity=&quot;0&quot;/&gt;
+        &lt;/linearGradient&gt;
+      &lt;/defs&gt;
+      &lt;text x=&quot;450&quot; y=&quot;95&quot; text-anchor=&quot;middle&quot; fill=&quot;#7d8590&quot; font-size=&quot;13&quot;&gt;Sin datos aún&lt;/text&gt;
+    &lt;/svg&gt;
+  &lt;/div&gt;
+
+  &lt;!-- Tabla historial --&gt;
+  &lt;div class=&quot;card table-card&quot;&gt;
+    &lt;div class=&quot;table-header&quot;&gt;
+      &lt;h3&gt;Registro de mediciones&lt;/h3&gt;
+      &lt;span id=&quot;contRegistros&quot; style=&quot;font-size:0.78rem;color:var(--muted);&quot;&gt;0 registros&lt;/span&gt;
+    &lt;/div&gt;
+    &lt;div class=&quot;table-wrap&quot;&gt;
+      &lt;table&gt;
+        &lt;thead&gt;
+          &lt;tr&gt;
+            &lt;th&gt;#&lt;/th&gt;
+            &lt;th&gt;Tiempo (ms)&lt;/th&gt;
+            &lt;th&gt;Entrada (°C)&lt;/th&gt;
+            &lt;th&gt;Salida (°C)&lt;/th&gt;
+            &lt;th&gt;Δ (°C)&lt;/th&gt;
+          &lt;/tr&gt;
+        &lt;/thead&gt;
+        &lt;tbody id=&quot;tablaBody&quot;&gt;
+          &lt;tr&gt;&lt;td colspan=&quot;5&quot; class=&quot;empty&quot;&gt;Sin registros todavía.&lt;/td&gt;&lt;/tr&gt;
+        &lt;/tbody&gt;
+      &lt;/table&gt;
+    &lt;/div&gt;
+  &lt;/div&gt;
+
+&lt;/main&gt;
+
+&lt;!-- ══════════════════════════════════════════
+     SCRIPTS
+═══════════════════════════════════════════ --&gt;
+&lt;script&gt;
+// ╔══════════════════════════════════════════╗
+// ║   ✏️  EDITA AQUÍ TU CONFIGURACIÓN FIREBASE ║
+// ╚══════════════════════════════════════════╝
+
+const firebaseConfig = {
+apiKey: &quot;AIzaSyBTsjExwRP-kctYLUKVskgJtebNlkYTBF4&quot;,
+  authDomain: &quot;monitoreo-de-temperatura-9af9d.firebaseapp.com&quot;,
+  databaseURL: &quot;https://monitoreo-de-temperatura-9af9d-default-rtdb.firebaseio.com&quot;,
+  projectId: &quot;monitoreo-de-temperatura-9af9d&quot;,
+  storageBucket: &quot;monitoreo-de-temperatura-9af9d.firebasestorage.app&quot;,
+  messagingSenderId: &quot;445852878317&quot;,
+  appId: &quot;1:445852878317:web:91009f011c2d6dfc8a93e4&quot;,
+  measurementId: &quot;G-JZX2Z1FN60&quot;
+};
+// ════════════════════════════════════════════
+
+// ── Inicializar Firebase ──────────────────────
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+
+// Estado local
+let historial = [];   // [ { ts, entrada, salida, diferencia } ]
+let midiendo  = false;
+
+// ── Escuchar /ultimaMedicion en tiempo real ──
+db.ref(&quot;/ultimaMedicion&quot;).on(&quot;value&quot;, snap =&gt; {
+  const d = snap.val();
+  if (!d) return;
+
+  document.getElementById(&quot;valEntrada&quot;).innerHTML =
+    `${d.entrada.toFixed(2)}&lt;span class=&quot;temp-unit&quot;&gt;°C&lt;/span&gt;`;
+  document.getElementById(&quot;valSalida&quot;).innerHTML =
+    `${d.salida.toFixed(2)}&lt;span class=&quot;temp-unit&quot;&gt;°C&lt;/span&gt;`;
+  document.getElementById(&quot;valDelta&quot;).innerHTML =
+    `${d.diferencia.toFixed(2)}&lt;span class=&quot;temp-unit&quot;&gt;°C&lt;/span&gt;`;
+  document.getElementById(&quot;lastTs&quot;).textContent =
+    `${d.ts.toLocaleString()} ms`;
+
+  // Agregar al historial local si no existe
+  if (!historial.find(r =&gt; r.ts === d.ts)) {
+    historial.unshift({ ts: d.ts, entrada: d.entrada, salida: d.salida, diferencia: d.diferencia });
+    if (historial.length &gt; 200) historial.pop();
+    actualizarTabla();
+    actualizarGrafica();
+  }
+});
+
+// ── Escuchar /control/midiendo ───────────────
+db.ref(&quot;/control/midiendo&quot;).on(&quot;value&quot;, snap =&gt; {
+  midiendo = snap.val() === true;
+  sincronizarUI();
+});
+
+// ── Escuchar /mediciones (carga inicial) ─────
+db.ref(&quot;/mediciones&quot;).orderByKey().limitToLast(200).once(&quot;value&quot;, snap =&gt; {
+  const data = snap.val();
+  if (!data) return;
+  historial = Object.values(data).reverse();
+  actualizarTabla();
+  actualizarGrafica();
+});
+
+// ── Estado de conexión ────────────────────────
+db.ref(&quot;.info/connected&quot;).on(&quot;value&quot;, snap =&gt; {
+  const online = snap.val() === true;
+  document.getElementById(&quot;wifiDot&quot;).className   = &quot;dot &quot; + (online ? &quot;online&quot; : &quot;offline&quot;);
+  document.getElementById(&quot;wifiLabel&quot;).textContent = online ? &quot;Firebase online&quot; : &quot;Sin conexión&quot;;
+  // Ocultar aviso de config si hay conexión real
+  if (online) document.getElementById(&quot;configNote&quot;).style.display = &quot;none&quot;;
+});
+
+// ══════════════════════════════════════════════
+//  CONTROL
+// ══════════════════════════════════════════════
+function setMidiendo(valor) {
+  db.ref(&quot;/control/midiendo&quot;).set(valor);
+}
+
+function sincronizarUI() {
+  const badge = document.getElementById(&quot;statusBadge&quot;);
+  const texto = document.getElementById(&quot;statusText&quot;);
+  const btnStart = document.getElementById(&quot;btnStart&quot;);
+  const btnStop  = document.getElementById(&quot;btnStop&quot;);
+
+  if (midiendo) {
+    badge.className = &quot;status-badge&quot;;
+    texto.textContent = &quot;Midiendo…&quot;;
+    btnStart.disabled = true;
+    btnStop.disabled  = false;
+  } else {
+    badge.className = &quot;status-badge detenido&quot;;
+    texto.textContent = &quot;Detenido&quot;;
+    btnStart.disabled = false;
+    btnStop.disabled  = true;
+  }
+}
+
+// ══════════════════════════════════════════════
+//  TABLA
+// ══════════════════════════════════════════════
+function actualizarTabla() {
+  const tbody = document.getElementById(&quot;tablaBody&quot;);
+  document.getElementById(&quot;contRegistros&quot;).textContent = `${historial.length} registros`;
+
+  if (historial.length === 0) {
+    tbody.innerHTML = `&lt;tr&gt;&lt;td colspan=&quot;5&quot; class=&quot;empty&quot;&gt;Sin registros todavía.&lt;/td&gt;&lt;/tr&gt;`;
+    return;
+  }
+
+  tbody.innerHTML = historial.slice(0, 100).map((r, i) =&gt; `
+    &lt;tr&gt;
+      &lt;td style=&quot;color:var(--muted)&quot;&gt;${i + 1}&lt;/td&gt;
+      &lt;td style=&quot;color:var(--muted)&quot;&gt;${r.ts}&lt;/td&gt;
+      &lt;td class=&quot;td-entrada&quot;&gt;${r.entrada.toFixed(2)}&lt;/td&gt;
+      &lt;td class=&quot;td-salida&quot;&gt;${r.salida.toFixed(2)}&lt;/td&gt;
+      &lt;td class=&quot;td-delta&quot;&gt;${r.diferencia.toFixed(2)}&lt;/td&gt;
+    &lt;/tr&gt;`).join(&quot;&quot;);
+}
+
+// ══════════════════════════════════════════════
+//  GRÁFICA SVG
+// ══════════════════════════════════════════════
+function actualizarGrafica() {
+  const datos = historial.slice(0, 30).reverse();
+  if (datos.length &lt; 2) return;
+
+  const svg   = document.getElementById(&quot;chartSvg&quot;);
+  const W = 900, H = 180, PAD = 16;
+
+  // Rango de temperatura
+  const allTemps = datos.flatMap(d =&gt; [d.entrada, d.salida]);
+  const minT = Math.min(...allTemps) - 1;
+  const maxT = Math.max(...allTemps) + 1;
+
+  const xOf = i =&gt; PAD + (i / (datos.length - 1)) * (W - 2 * PAD);
+  const yOf = t =&gt; PAD + (1 - (t - minT) / (maxT - minT)) * (H - 2 * PAD);
+
+  const polylinePoints = (field) =&gt;
+    datos.map((d, i) =&gt; `${xOf(i)},${yOf(d[field])}`).join(&quot; &quot;);
+
+  const areaPath = (field, color) =&gt; {
+    const pts = datos.map((d, i) =&gt; `${xOf(i)},${yOf(d[field])}`).join(&quot; &quot;);
+    const first = `${xOf(0)},${H}`;
+    const last  = `${xOf(datos.length - 1)},${H}`;
+    return `M ${first} L ${pts} L ${last} Z`;
+  };
+
+  svg.innerHTML = `
+    &lt;defs&gt;
+      &lt;linearGradient id=&quot;gradEntrada&quot; x1=&quot;0&quot; y1=&quot;0&quot; x2=&quot;0&quot; y2=&quot;1&quot;&gt;
+        &lt;stop offset=&quot;0%&quot; stop-color=&quot;#38bdf8&quot; stop-opacity=&quot;0.5&quot;/&gt;
+        &lt;stop offset=&quot;100%&quot; stop-color=&quot;#38bdf8&quot; stop-opacity=&quot;0&quot;/&gt;
+      &lt;/linearGradient&gt;
+      &lt;linearGradient id=&quot;gradSalida&quot; x1=&quot;0&quot; y1=&quot;0&quot; x2=&quot;0&quot; y2=&quot;1&quot;&gt;
+        &lt;stop offset=&quot;0%&quot; stop-color=&quot;#f97316&quot; stop-opacity=&quot;0.5&quot;/&gt;
+        &lt;stop offset=&quot;100%&quot; stop-color=&quot;#f97316&quot; stop-opacity=&quot;0&quot;/&gt;
+      &lt;/linearGradient&gt;
+    &lt;/defs&gt;
+
+    &lt;!-- Áreas rellenas --&gt;
+    &lt;path d=&quot;${areaPath('entrada')}&quot; fill=&quot;url(#gradEntrada)&quot;/&gt;
+    &lt;path d=&quot;${areaPath('salida')}&quot;  fill=&quot;url(#gradSalida)&quot;/&gt;
+
+    &lt;!-- Líneas --&gt;
+    &lt;polyline points=&quot;${polylinePoints('entrada')}&quot;
+      fill=&quot;none&quot; stroke=&quot;#38bdf8&quot; stroke-width=&quot;2.2&quot;
+      stroke-linecap=&quot;round&quot; stroke-linejoin=&quot;round&quot;/&gt;
+    &lt;polyline points=&quot;${polylinePoints('salida')}&quot;
+      fill=&quot;none&quot; stroke=&quot;#f97316&quot; stroke-width=&quot;2.2&quot;
+      stroke-linecap=&quot;round&quot; stroke-linejoin=&quot;round&quot;/&gt;
+
+    &lt;!-- Puntos último dato --&gt;
+    &lt;circle cx=&quot;${xOf(datos.length-1)}&quot; cy=&quot;${yOf(datos[datos.length-1].entrada)}&quot;
+      r=&quot;4&quot; fill=&quot;#38bdf8&quot;/&gt;
+    &lt;circle cx=&quot;${xOf(datos.length-1)}&quot; cy=&quot;${yOf(datos[datos.length-1].salida)}&quot;
+      r=&quot;4&quot; fill=&quot;#f97316&quot;/&gt;
+
+    &lt;!-- Leyenda --&gt;
+    &lt;rect x=&quot;10&quot; y=&quot;8&quot; width=&quot;12&quot; height=&quot;3&quot; rx=&quot;1.5&quot; fill=&quot;#38bdf8&quot;/&gt;
+    &lt;text x=&quot;26&quot; y=&quot;12&quot; fill=&quot;#7d8590&quot; font-size=&quot;10&quot;&gt;Entrada&lt;/text&gt;
+    &lt;rect x=&quot;72&quot; y=&quot;8&quot; width=&quot;12&quot; height=&quot;3&quot; rx=&quot;1.5&quot; fill=&quot;#f97316&quot;/&gt;
+    &lt;text x=&quot;88&quot; y=&quot;12&quot; fill=&quot;#7d8590&quot; font-size=&quot;10&quot;&gt;Salida&lt;/text&gt;
+  `;
+}
+
+// ══════════════════════════════════════════════
+//  EXPORTAR EXCEL
+// ══════════════════════════════════════════════
+function exportarExcel() {
+  if (historial.length === 0) { alert(&quot;No hay datos para exportar.&quot;); return; }
+
+  const filas = historial.map((r, i) =&gt; ({
+    &quot;N°&quot;:              i + 1,
+    &quot;Tiempo (ms)&quot;:     r.ts,
+    &quot;Entrada (°C)&quot;:    r.entrada,
+    &quot;Salida (°C)&quot;:     r.salida,
+    &quot;Diferencia (°C)&quot;: r.diferencia
+  }));
+
+  const ws = XLSX.utils.json_to_sheet(filas);
+
+  // Ancho de columnas
+  ws['!cols'] = [
+    { wch: 6 }, { wch: 14 }, { wch: 14 }, { wch: 13 }, { wch: 16 }
+  ];
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, &quot;Mediciones&quot;);
+  XLSX.writeFile(wb, `temperaturas_${Date.now()}.xlsx`);
+}
+
+// ══════════════════════════════════════════════
+//  EXPORTAR TXT
+// ══════════════════════════════════════════════
+function exportarTxt() {
+  if (historial.length === 0) { alert(&quot;No hay datos para exportar.&quot;); return; }
+
+  const cabecera = &quot;N°\tTiempo(ms)\tEntrada(°C)\tSalida(°C)\tDiferencia(°C)&quot;;
+  const filas = historial.map((r, i) =&gt;
+    `${i+1}\t${r.ts}\t${r.entrada.toFixed(2)}\t${r.salida.toFixed(2)}\t${r.diferencia.toFixed(2)}`
+  );
+
+  const contenido = [cabecera, ...filas].join(&quot;\n&quot;);
+  const blob = new Blob([contenido], { type: &quot;text/plain;charset=utf-8&quot; });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement(&quot;a&quot;);
+  a.href = url;
+  a.download = `temperaturas_${Date.now()}.txt`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ══════════════════════════════════════════════
+//  LIMPIAR HISTORIAL LOCAL
+// ══════════════════════════════════════════════
+function limpiarHistorial() {
+  if (!confirm(&quot;¿Borrar todos los registros de la tabla y gráfica? (No elimina Firebase)&quot;)) return;
+  historial = [];
+  actualizarTabla();
+  document.getElementById(&quot;chartSvg&quot;).innerHTML =
+    `&lt;text x=&quot;450&quot; y=&quot;95&quot; text-anchor=&quot;middle&quot; fill=&quot;#7d8590&quot; font-size=&quot;13&quot;&gt;Sin datos&lt;/text&gt;`;
+}
+&lt;/script&gt;
+&lt;/body&gt;
+&lt;/html&gt;</pre>
+</body>
+</html>
